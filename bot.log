@@ -1,0 +1,7 @@
+[10:13:23] INFO - Бот запущен, начинаю polling...
+[10:13:23] INFO - Start polling
+[10:13:24] INFO - Run polling for bot @fajfsasdbot id=7645586500 - 'ggg_bot'
+[10:13:31] INFO - Update id=619391544 is handled. Duration 452 ms by bot id=7645586500
+[10:13:31] INFO - Update id=619391545 is not handled. Duration 0 ms by bot id=7645586500
+[10:13:34] INFO - Update id=619391546 is handled. Duration 202 ms by bot id=7645586500
+[10:13:40] INFO - Update id=619391547 is handled. Duration 3938 ms by bot id=7645586500
