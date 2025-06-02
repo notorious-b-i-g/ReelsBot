@@ -1,8 +1,9 @@
 import asyncio
 import logging
+import re
 import aiohttp
 from aiogram import types
-from config import OPENAI_API_KEY, PROXY_URL, PROXY_AUTH, SYSTEM_PROMPT
+from config import OPENAI_API_KEY, PROXY_URL, PROXY_AUTH
 
 async def animate_progress(message: types.Message) -> None:
     """
@@ -65,6 +66,33 @@ async def call_gpt_api(history: list, system_prompt: str) -> str:
                 error_text = await response.text()
                 logging.error(f"Ошибка GPT API: {response.status} - {error_text}")
                 return "Ошибка при вызове GPT API."
+
+
+POST_RE = re.compile(
+    r"(пост|контент|reels?|stories|сторис|сценарий|копирайт|придумай|напиши)",
+    re.IGNORECASE,
+)
+
+CLASSIFIER_PROMPT = (
+    "Определи, относится ли запрос к созданию контента. "
+    "Если да, ответь одним словом POST. В остальных случаях ответь DOG."
+)
+
+
+async def classify_message(text: str) -> str:
+    """Классифицирует запрос как POST или DOG."""
+    if POST_RE.search(text):
+        return "POST"
+    try:
+        result = await call_gpt_api([{"role": "user", "content": text}], CLASSIFIER_PROMPT)
+        result = result.strip().upper()
+        if "POST" in result:
+            return "POST"
+        if "DOG" in result:
+            return "DOG"
+    except Exception as exc:
+        logging.error(f"Classifier error: {exc}")
+    return "DOG"
 
 def get_main_reply_keyboard() -> types.ReplyKeyboardMarkup:
     """

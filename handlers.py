@@ -4,11 +4,25 @@ from aiogram import types, Router, F, Bot
 from aiogram.filters import CommandStart
 import tiktoken
 
-from config import SYSTEM_PROMPT, TELEGRAM_BOT_TOKEN
-from utils import animate_progress, call_gpt_api, get_main_reply_keyboard
+from config import (
+    SYSTEM_PROMPT,
+    TELEGRAM_BOT_TOKEN,
+    POST_GENERATION_PERSONALITY,
+)
+from utils import (
+    animate_progress,
+    call_gpt_api,
+    get_main_reply_keyboard,
+    classify_message,
+)
 from db import (
-    get_user_context, update_user_context, clear_user_context,
-    add_allowed_user, is_user_allowed, update_system_prompt, get_system_prompt
+    get_user_context,
+    update_user_context,
+    clear_user_context,
+    add_allowed_user,
+    is_user_allowed,
+    update_system_prompt,
+    get_system_prompt,
 )
 
 router = Router()
@@ -298,6 +312,7 @@ async def custom_post_personality_handler(message: types.Message, bot: Bot) -> N
     except Exception as exc:
         logging.error(f"Ошибка обновления ответа: {exc}")
 
+
 #########################################
 # "Придумай Reels"
 #########################################
@@ -502,39 +517,48 @@ async def custom_stories_handler(message: types.Message, bot: Bot) -> None:
 @router.message(lambda m: m.text and not m.text.startswith('/'))
 async def gpt_handler(message: types.Message) -> None:
     user_id = message.from_user.id
-    # 1. проверка доступа ------------------------------------------------
+
+    # 1. проверка доступа
     if not is_user_allowed(user_id):
         await message.answer("Нет доступа.")
         return
-    # 2. получаем полную историю ----------------------------------------
-    full_history = get_user_context(user_id)
-    system_prompt = get_system_prompt(user_id)
-    user_msg = {"role": "user", "content": message.text}
-    # 3. обрезаем историю по токенам ------------------------------------
-    recent_history = clip_history_by_tokens(
-        history=full_history,
-        extra_msgs=[{"role": "system", "content": system_prompt}, user_msg]
+
+    # 2. определяем тип запроса
+    ctx_type = await classify_message(message.text)
+
+    # 3. загружаем полную историю
+    full_history = get_user_context(user_id, ctx=ctx_type)
+
+    # 4. формируем историю для GPT (последние 20 сообщений + текущий)
+    history_for_gpt = full_history[-20:] + [{"role": "user", "content": message.text}]
+
+    system_prompt = (
+        POST_GENERATION_PERSONALITY if ctx_type == "POST" else SYSTEM_PROMPT
     )
-    request_history = recent_history + [user_msg]    # то, что уходит в GPT
-    # 4. показываем «обрабатываю…» --------------------------------------
-    anim_msg  = await message.answer("Запрос принят, обрабатываю…")
+
+    logging.info(
+        f"UID={user_id} | ctx={ctx_type.lower()}_ctx | prompt={system_prompt[:10]}"
+    )
+
+    # 5. вызываем GPT
+    anim_msg = await message.answer("Запрос принят, обрабатываю...")
     anim_task = asyncio.create_task(animate_progress(anim_msg))
-    # 5. вызываем OpenAI -------------------------------------------------
-    answer = await call_gpt_api(request_history, system_prompt)  # ✅ без messages=
-    # optional post-processing
+
+    answer = await call_gpt_api(history_for_gpt, system_prompt)
     answer = filter_gpt_response(answer)
-    # 6. останавливаем анимацию -----------------------------------------
+
     anim_task.cancel()
     try:
         await anim_task
     except asyncio.CancelledError:
         pass
-    # 7. сохраняем полную (необрезанную) историю -------------------------
-    update_user_context(
-        user_id,
-        full_history + [user_msg, {"role": "assistant", "content": answer}]
-    )
-    # 8. отправляем результат -------------------------------------------
+
+    # 6. сохраняем историю (только две реплики)
+    full_history.append({"role": "user", "content": message.text})
+    full_history.append({"role": "assistant", "content": answer})
+    update_user_context(user_id, full_history, ctx=ctx_type)
+
+    # 7. отправляем результат
     try:
         await anim_msg.edit_text(answer)
     except Exception as exc:
