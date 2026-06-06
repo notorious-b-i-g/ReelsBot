@@ -17,8 +17,12 @@ logging.basicConfig(
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-PROXY_URL = "http://PROXY_HOST:8000"
-PROXY_AUTH = aiohttp.BasicAuth("PROXY_USER", "PROXY_PASS")
+PROXY_URL = os.getenv("PROXY_URL")
+PROXY_AUTH = (
+    aiohttp.BasicAuth(os.getenv("PROXY_USER"), os.getenv("PROXY_PASS"))
+    if os.getenv("PROXY_USER") and os.getenv("PROXY_PASS")
+    else None
+)
 
 
 
